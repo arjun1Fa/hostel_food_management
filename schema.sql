@@ -5,5 +5,9 @@ CREATE TYPE payment_status AS ENUM ('pending', 'verified', 'rejected');
 
 CREATE TABLE hostels(
     hostel_id SERIAL primary key,
+    name varchar (30) NOT NULL,
+    invite_code varchar (20), UNIQUE NOT NULL,
+    admin_id UUID
     
+
 )
