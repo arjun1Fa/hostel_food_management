@@ -1,22 +1,6 @@
 import re
 from  transactions import read_transaction
 
-def parse(texts):
-    return "\n".join(texts)   
-import re
-
-import re
-
-import re
-
-import re
-
-import re
-
-import re
-
-import re
-
 def parse_payment(texts):
 
     data = {
