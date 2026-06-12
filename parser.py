@@ -5,130 +5,287 @@ def parse(texts):
     return "\n".join(texts)   
 import re
 
+import re
+
+import re
+
+import re
+
+import re
+
+import re
+
+import re
+
 def parse_payment(texts):
 
     data = {
         "sender": None,
+        "receiver": None,
         "amount": None,
         "date": None,
         "time": None,
-        "utr": None
+        "utr": None,
+        "status": None
     }
 
-    # -------------------------
-    # Sender
-    # -------------------------
+    full_text = " ".join(texts)
 
-    for line in texts:
+    # ==================================
+    # SENDER
+    # ==================================
+    for text in texts:
 
-        line = line.strip()
-
-        match = re.match(
-            r'^From:?\s*(.+)$',
-            line,
+        match = re.search(
+            r'^from[:\s]+(.+)$',
+            text.strip(),
             re.IGNORECASE
         )
 
         if match:
+            data["sender"] = match.group(1).strip()
+            break
 
-            sender = match.group(1)
+    # ==================================
+    # RECEIVER
+    # ==================================
+    for i, text in enumerate(texts):
 
-            # Ignore bank account owner
-            if "bank" not in sender.lower():
-                data["sender"] = sender
+        lower = text.lower().strip()
+
+        # To: Abhin C
+        if lower.startswith("to:"):
+            data["receiver"] = text.split(":", 1)[1].strip()
+            break
+
+        # Paid to
+        if lower == "paid to":
+            if i + 1 < len(texts):
+                data["receiver"] = texts[i + 1].strip()
                 break
 
-    # -------------------------
-    # UTR (12 digits)
-    # -------------------------
+        # Credited to (PhonePe)
+        if lower == "credited to":
+            if i + 1 < len(texts):
+                data["receiver"] = texts[i + 1].strip()
+                break
 
-    for line in texts:
-
-        match = re.fullmatch(r'\d{12}', line.strip())
-
-        if match:
-            data["utr"] = match.group()
-            break
-
-    # -------------------------
-    # Date
-    # -------------------------
-
-    for line in texts:
-
+        # Payment Received by XYZ
         match = re.search(
-            r'\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\s+\d{2,4}',
-            line,
+            r'payment\s+received\s+by\s+(.+)',
+            text,
             re.IGNORECASE
         )
 
         if match:
-            data["date"] = match.group()
+            data["receiver"] = match.group(1).strip()
             break
 
-    # -------------------------
-    # Time
-    # -------------------------
+    # ==================================
+    # AMOUNT
+    # ==================================
+    amount_candidates = []
 
-    for line in texts:
+    for text in texts:
 
-        match = re.search(
-            r'\d{1,2}[:.]\d{2}\s*[ap]m',
-            line,
-            re.IGNORECASE
-        )
+        lower = text.lower()
 
-        if match:
-            data["time"] = match.group()
-            break
-
-    # -------------------------
-    # Amount
-    # -------------------------
-
-    amounts = []
-
-    for line in texts:
-
-        line = line.strip()
-
-        # Skip phone numbers
-        if "+91" in line:
+        if lower.startswith("from"):
             continue
 
-        # Skip UTR line
-        if re.fullmatch(r'\d{12}', line):
+        if lower.startswith("to"):
             continue
 
+        if "+" in text:
+            continue
+
+        if "transaction id" in lower:
+            continue
+
+        if "utr" in lower:
+            continue
+
+        # ₹100
         matches = re.findall(
-            r'[\d,]+(?:\.\d{2})?',
-            line
+            r'₹\s*([\d,]+(?:\.\d{2})?)',
+            text
         )
 
-        for match in matches:
+        for value in matches:
+
+            try:
+                amount_candidates.append(
+                    float(value.replace(",", ""))
+                )
+            except:
+                pass
+
+        # Standalone number
+        if re.fullmatch(
+            r'[\d,]+(?:\.\d{2})?',
+            text.strip()
+        ):
+
+            value = text.replace(",", "")
 
             try:
 
-                value = float(
-                    match.replace(",", "")
-                )
+                number = float(value)
 
-                # Ignore very large numbers
-                if value > 1000000:
+                # Ignore years
+                if 1900 <= number <= 2100:
                     continue
 
-                amounts.append(value)
+                # Ignore long IDs
+                if len(value) >= 10:
+                    continue
+
+                # Ignore unrealistic amounts
+                if number > 100000:
+                    continue
+
+                amount_candidates.append(number)
 
             except:
                 pass
 
-    if amounts:
-        data["amount"] = max(amounts)
+    if amount_candidates:
+        data["amount"] = max(amount_candidates)
+
+    # ==================================
+    # DATE
+    # ==================================
+    date_patterns = [
+
+        # 10 Jun 2026
+        r'(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})',
+
+        # 10th Jun 26
+        r'(\d{1,2}(?:st|nd|rd|th)\s+[A-Za-z]{3,9}\s+\d{2,4})',
+
+        # 10/06/2026
+        r'(\d{1,2}/\d{1,2}/\d{4})',
+
+        # 2026-06-10
+        r'(\d{4}-\d{2}-\d{2})'
+    ]
+
+    for pattern in date_patterns:
+
+        match = re.search(
+            pattern,
+            full_text,
+            re.IGNORECASE
+        )
+
+        if match:
+            data["date"] = match.group(1)
+            break
+
+    # ==================================
+    # TIME
+    # ==================================
+    time_match = re.search(
+        r'(\d{1,2}:\d{2}\s*[APap][Mm])',
+        full_text
+    )
+
+    if time_match:
+        data["time"] = time_match.group(1)
+
+    # ==================================
+    # STATUS
+    # ==================================
+    status_words = [
+        "completed",
+        "successful",
+        "success",
+        "payment received",
+        "payment successful",
+        "paid"
+    ]
+
+    for text in texts:
+
+        lower = text.lower()
+
+        for status in status_words:
+
+            if status in lower:
+                data["status"] = status.title()
+                break
+
+    # ==================================
+    # UTR
+    # ==================================
+
+    # 1. UTR:417959560328
+    for text in texts:
+
+        match = re.search(
+            r'utr\s*[:\-]?\s*(\d{12})',
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+            data["utr"] = match.group(1)
+            break
+
+    # 2. UPI Transaction ID line
+    if data["utr"] is None:
+
+        for text in texts:
+
+            match = re.search(
+                r'upi\s*transaction\s*id\s*[:\-]?\s*(\d{12})',
+                text,
+                re.IGNORECASE
+            )
+
+            if match:
+                data["utr"] = match.group(1)
+                break
+
+    # 3. Next line after transaction id
+    if data["utr"] is None:
+
+        for i, text in enumerate(texts):
+
+            if "transaction id" in text.lower():
+
+                if i + 1 < len(texts):
+
+                    candidate = texts[i + 1].strip()
+
+                    digits = "".join(
+                        re.findall(r'\d', candidate)
+                    )
+
+                    if len(digits) >= 12:
+                        data["utr"] = digits[:12]
+                        break
+
+    # 4. Fallback standalone 12 digit number
+    if data["utr"] is None:
+
+        for text in texts:
+
+            matches = re.findall(
+                r'\b\d{12}\b',
+                text
+            )
+
+            for candidate in matches:
+
+                # Ignore phone numbers starting with 91
+                if candidate.startswith("91"):
+                    continue
+
+                data["utr"] = candidate
+                break
+
+            if data["utr"]:
+                break
 
     return data
-
-data=read_transaction(r"images\gpay\2.jpeg")
-
-results=parse_payment(data)
-print(data)
-print(results)
