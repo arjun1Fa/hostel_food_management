@@ -130,3 +130,8 @@ FOR EACH ROW EXECUTE FUNCTION fn_credit_balance_on_verification();
 
 
 -- All schema related info.
+
+-- this is for checcking whether food was delivered or not
+
+ALTER TABLE menus 
+ADD COLUMN is_delivered BOOLEAN DEFAULT FALSE;
